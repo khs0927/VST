@@ -1,0 +1,76 @@
+name: Real sfizz audio renderer integration
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/sfizz-render-smoke.yml'
+jobs:
+  audio-render:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build cmake libsndfile1-dev libjack-jackd2-dev
+      - name: Compile real upstream sfizz render (archived stable 1.2.3)
+        run: |
+          curl -fL --retry 2 --output /tmp/sfizz-1.2.3.tar.gz \
+            https://github.com/sfztools/sfizz/releases/download/1.2.3/sfizz-1.2.3.tar.gz
+          mkdir -p /tmp/sfizz-src
+          tar -xzf /tmp/sfizz-1.2.3.tar.gz -C /tmp/sfizz-src --strip-components=1
+          cmake -S /tmp/sfizz-src -B /tmp/sfizz-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSFIZZ_JACK=OFF -DSFIZZ_RENDER=ON \
+            -DSFIZZ_BENCHMARKS=OFF -DBUILD_TESTING=OFF -DENABLE_LTO=OFF
+          cmake --build /tmp/sfizz-build --target sfizz_render --parallel 2
+          find /tmp/sfizz-build -name 'sfizz_render' -type f -print
+      - name: Create original synthetic sine test sample (NOT neural cloning)
+        run: |
+          python -m pip install -e .
+          mkdir -p /tmp/test-sfz/samples /tmp/test-sfz/library
+          python - <<'PY'
+          import wave, math, struct, json
+          from pathlib import Path
+          src=Path('/tmp/test-sfz/samples')
+          sr=44100
+          frames=[int(12000*math.sin(2*math.pi*261.625565*n/sr)) for n in range(sr)]
+          with wave.open(str(src/'c4.wav'),'wb') as w:
+              w.setnchannels(1)
+              w.setsampwidth(2)
+              w.setframerate(sr)
+              w.writeframes(struct.pack('<'+'h'*len(frames),*frames))
+          (src/'notes.json').write_text(json.dumps([{'midi':60,'velocity':100,'wav':'c4.wav'}]))
+          PY
+          mix2vst package-sfz --samples /tmp/test-sfz/samples \
+            --notes /tmp/test-sfz/samples/notes.json --out /tmp/test-sfz/library --name demo
+          mix2vst export-decent --library /tmp/test-sfz/library
+          mix2vst audit --library /tmp/test-sfz/library
+          mix2vst make-midi --out /tmp/test-sfz/melody.mid --pitch 60
+      - name: Render actual audio through upstream C++ sfizz
+        run: |
+          RENDERER="$(find /tmp/sfizz-build -name sfizz_render -type f | head -1)"
+          test -n "$RENDERER"
+          "$RENDERER" --sfz /tmp/test-sfz/library/demo.sfz \
+            --midi /tmp/test-sfz/melody.mid --wav /tmp/test-sfz/render.wav
+          python - <<'PY'
+          import wave, math, array, sys
+          p='/tmp/test-sfz/render.wav'
+          with wave.open(p,'rb') as w:
+              frames=w.getnframes()
+              rate=w.getframerate()
+              channels=w.getnchannels()
+              width=w.getsampwidth()
+              data=w.readframes(frames)
+          print({'frames':frames,'rate':rate,'channels':channels,'width':width,'bytes':len(data)})
+          assert frames>rate//2, 'render is too short'
+          assert len(data)>100, 'empty WAV'
+          assert any(data), 'silence detected'
+          PY
