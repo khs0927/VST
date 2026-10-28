@@ -1,0 +1,20 @@
+{
+  "mixture": "licensed-mix.wav",
+  "rights_confirmed": false,
+  "instruments": [
+    {
+      "name": "piano",
+      "label": "keyboard",
+      "offset": 12.0,
+      "pitches": [48, 52, 55, 60, 64, 67, 72],
+      "velocities": [55, 95]
+    },
+    {
+      "name": "guitar",
+      "label": "guitar",
+      "offset": 36.0,
+      "pitches": [40, 45, 48, 52, 55, 60, 64],
+      "velocities": [60, 105]
+    }
+  ]
+}
