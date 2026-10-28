@@ -39,7 +39,7 @@ jobs:
       - name: Build Tracktion pluginval from source (avoid Linux libcurl ABI mismatch)
         run: |
           sudo apt-get install -y -qq libasound2-dev libfreetype6-dev libxcursor-dev \
-            libxinerama-dev libxrandr-dev libx11-dev libcurl4-openssl-dev
+            libxinerama-dev libxrandr-dev libx11-dev libxi-dev libxext-dev libgtk-3-dev libcurl4-openssl-dev
           git clone --depth 1 --branch develop \
             https://github.com/Tracktion/pluginval.git /tmp/pluginval-src
           cmake -S /tmp/pluginval-src -B /tmp/pluginval-build -G Ninja \
