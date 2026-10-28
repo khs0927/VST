@@ -1,0 +1,55 @@
+name: Upstream sfizz VST3 compile and pluginval
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - '.github/workflows/sfizz-vst3-ci.yml'
+jobs:
+  vst3-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sfizz-ui Linux compile dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git cmake ninja-build pkg-config \
+            libsndfile1-dev libcairo2-dev libfontconfig1-dev libpango1.0-dev \
+            libjack-jackd2-dev libx11-xcb-dev libxcb-cursor-dev \
+            libxcb-keysyms1-dev libxcb-util-dev libxcb-xkb-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libgl1-mesa-dev \
+            xvfb unzip
+      - name: Fetch upstream plugin source with recursive submodules
+        run: |
+          git clone --depth 1 --recursive --branch develop \
+            https://github.com/sfztools/sfizz-ui.git /tmp/sfizz-ui
+          git -C /tmp/sfizz-ui rev-parse HEAD
+          test -f /tmp/sfizz-ui/CMakeLists.txt
+      - name: Build existing generic sfizz VST3 plugin (not an instrument clone)
+        run: |
+          cmake -S /tmp/sfizz-ui -B /tmp/sfizz-ui/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSFIZZ_JACK=OFF -DSFIZZ_RENDER=OFF \
+            -DSFIZZ_SHARED=OFF -DPLUGIN_LV2=OFF -DPLUGIN_LV2_UI=OFF \
+            -DPLUGIN_PUREDATA=OFF -DPLUGIN_VST3=ON -DENABLE_LTO=OFF
+          cmake --build /tmp/sfizz-ui/build --parallel 2
+          find /tmp/sfizz-ui/build -name '*.vst3' -print
+          test -n "$(find /tmp/sfizz-ui/build -name '*.vst3' -print -quit)"
+      - name: Fetch upstream Tracktion pluginval
+        run: |
+          curl -fL --retry 2 \
+            https://github.com/Tracktion/pluginval/releases/download/latest_release/pluginval_Linux.zip \
+            -o /tmp/pluginval.zip
+          mkdir -p /tmp/pluginval
+          unzip -q /tmp/pluginval.zip -d /tmp/pluginval
+          find /tmp/pluginval -type f -name pluginval -exec chmod +x {} \;
+      - name: Validate generic upstream VST3 via pluginval
+        run: |
+          set -euo pipefail
+          PLUGIN="$(find /tmp/sfizz-ui/build -name '*.vst3' -print -quit)"
+          VALIDATOR="$(find /tmp/pluginval -type f -name pluginval -print -quit)"
+          test -n "$PLUGIN" && test -n "$VALIDATOR"
+          xvfb-run -a "$VALIDATOR" --skip-gui-tests \
+            --strictness-level 5 "$PLUGIN"
+          echo "Verified: upstream sfizz VST3 generic sampler. This is not a unique instrument clone."
