@@ -3,7 +3,7 @@
 | Component | Source | Current integration / reality |
 |---|---|---|
 | Point-and-Play | https://github.com/User-tian/Point-and-Play | Official CLI subprocess, CUDA model not actually run |
-| sfizz and sfizz_render | https://github.com/sfztools/sfizz | External renderer invocation, mock tested, binary not present on CI |
+| sfizz and sfizz_render | https://github.com/sfztools/sfizz | Real upstream 1.2.3 renderer built in separate free CI and rendered synthetic SFZ/MIDI → WAV; run 40697828381 |
 | Decent Sampler | https://decentsampler-developers-guide.readthedocs.io/en/latest/the-groups-element.html | Generates official XML preset/sample zones, playback not tested |
 | pluginval | https://github.com/Tracktion/pluginval | Validation CLI adapter, no compiled native plugin provided |
 | HISE | https://github.com/christophhart/HISE | Independent VST3 requires complete project and working toolchain; not built |
