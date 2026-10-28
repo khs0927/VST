@@ -36,19 +36,21 @@ jobs:
           cmake --build /tmp/sfizz-ui/build --parallel 2
           find /tmp/sfizz-ui/build -name '*.vst3' -print
           test -n "$(find /tmp/sfizz-ui/build -name '*.vst3' -print -quit)"
-      - name: Fetch upstream Tracktion pluginval
+      - name: Build Tracktion pluginval from source (avoid Linux libcurl ABI mismatch)
         run: |
-          curl -fL --retry 2 \
-            https://github.com/Tracktion/pluginval/releases/download/latest_release/pluginval_Linux.zip \
-            -o /tmp/pluginval.zip
-          mkdir -p /tmp/pluginval
-          unzip -q /tmp/pluginval.zip -d /tmp/pluginval
-          find /tmp/pluginval -type f -name pluginval -exec chmod +x {} \;
+          sudo apt-get install -y -qq libasound2-dev libfreetype6-dev libxcursor-dev \
+            libxinerama-dev libxrandr-dev libx11-dev libcurl4-openssl-dev
+          git clone --depth 1 --branch develop \
+            https://github.com/Tracktion/pluginval.git /tmp/pluginval-src
+          cmake -S /tmp/pluginval-src -B /tmp/pluginval-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DPLUGINVAL_VST3_VALIDATOR=OFF
+          cmake --build /tmp/pluginval-build --target pluginval --parallel 2
+          find /tmp/pluginval-build -type f -name pluginval -print
       - name: Validate generic upstream VST3 via pluginval
         run: |
           set -euo pipefail
           PLUGIN="$(find /tmp/sfizz-ui/build -name '*.vst3' -print -quit)"
-          VALIDATOR="$(find /tmp/pluginval -type f -name pluginval -print -quit)"
+          VALIDATOR="$(find /tmp/pluginval-build -type f -name pluginval -print -quit)"
           test -n "$PLUGIN" && test -n "$VALIDATOR"
           xvfb-run -a "$VALIDATOR" --skip-gui-tests \
             --strictness-level 5 "$PLUGIN"
