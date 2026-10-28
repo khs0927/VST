@@ -1,67 +1,70 @@
-# Mixture Instrument Factory (stemless-first, open-source fusion)
+# VST — Mixture Instrument Factory v0.2.0
 
-Research-led, **honestly staged** framework for taking a selected instrument timbre *directly from a full music mixture* and turning synthesized notes into a playable sample instrument. **No stem separation** is used.
+A **stemless-first, open-source fusion** pipeline. Provide a mixed music file and explicit target-instrument cue windows. Use the original Point-and-Play code to synthesize a pitch/velocity grid, then export playable SFZ and free Decent Sampler presets. No pretrained weights or music recordings are redistributed.
 
-> Status: CPU-only orchestration layer tested. Actual Point-and-Play CUDA inference, timbre fidelity, VST3 build and audio playback not yet verified.
+**Verified scope:** CPU tests on mock audio/model output. **NOT proven:** actual CUDA inference, target-source similarity, standalone per-instrument VST3 build, real DAW playback.
 
-## Reuse upstream, write only glue
+## Install and test the free CPU foundation
 
-- **Point-and-Play** (MIT code; https://github.com/User-tian/Point-and-Play) — real upstream Python CLI for mixture + 4-second cue + MIDI note and velocity to WAV. This repo now contains a functioning subprocess **adapter**, not a fake model or rewrite of its synthesizer.
-- **SFZ** — minimal 125-line deterministic exporter to stitch generated WAVs into an instrument library, with pitch and velocity zoning and SHA-256. This lightweight glue is intentionally used instead of embedding another large GPL application; it is not a synthesis engine.
-- **HISE, LiveSynth, sfizioso, pluginval, DawDreamer, other tools** — integration points, not installed or falsely claimed working. See [UPSTREAMS.md](UPSTREAMS.md).
-
-## Offline CPU core
-
-```sh
+```bash
 python -m pip install -e '.[test]'
 python -m pytest -q
-mix2vst package-sfz --samples ./my-notes --notes ./notes.json --out ./local-output --name violin
+mix2vst preflight
 ```
 
-Example notes file:
+## Create and audit a playable instrument library
 
-```json
-[
-  {"midi":60,"velocity":64,"wav":"C4.wav","confidence":0.92},
-  {"midi":67,"velocity":96,"wav":"G4.wav","confidence":0.91}
-]
+```bash
+mix2vst package-sfz --samples /private/wavs --notes /private/notes.json \
+  --out /private/library/guitar --name guitar
+mix2vst audit --library /private/library/guitar
+mix2vst export-decent --library /private/library/guitar
+mix2vst make-midi --out /private/probe.mid --pitch 60
+# Requires independently installed sfizz_render:
+mix2vst render-sfizz --sfz /private/library/guitar/guitar.sfz \
+  --midi /private/probe.mid --out /private/probe.wav
 ```
 
-## Optional real upstream inference
+`notes.json` example: `[{"midi":60,"velocity":64,"wav":"C4.wav"}]`. A `.dspreset` opens in the free Decent Sampler VST3; it is **not** a separately compiled VST3.
 
-In a CUDA-capable **separate** Python environment, explicitly install the official Point-and-Play project according to its README, and obtain checkpoints after checking licenses. Never commit audio/checkpoints. Use:
+## Plan and run many instruments without stem separation
 
-```sh
-mix2vst run-point-play \
+Create a JSON manifest based on `examples/batch.example.json`, specifying one named instrument, an explicit category and a 4-second time offset per target.
+
+```bash
+mix2vst plan-batch --spec /private/jobs.json
+```
+
+On an **independently configured CUDA** machine after installing the official [Point-and-Play](https://github.com/User-tian/Point-and-Play) project, checkpoint assets, licensing review and supplying your authorized source mix:
+
+```bash
+mix2vst run-batch --spec /private/jobs.json \
   --repo-dir /path/to/Point-and-Play \
-  --encoder /path/to/checkpoints/encoder.pt \
-  --decoder /path/to/checkpoints/matched_decoder.pt \
-  --python /path/to/pointplay-venv/bin/python \
-  --mixture /path/to/recording.wav \
-  --label guitar --offset 30 \
-  --pitches 48 55 60 67 \
-  --velocities 64 100 \
-  --out /private/output --name cloned-guitar
+  --encoder /path/to/encoder.pt --decoder /path/to/matched_decoder.pt \
+  --python /path/to/venv/bin/python \
+  --out /private/output --execute
 ```
 
-The script calls the official `python -m point_and_play.generate` once **per velocity**, batching requested pitches, checks the exact expected filenames from upstream's public CLI, and creates `instrument/cloned-guitar.sfz`, `instrument/Samples/` and an auditable manifest. A failed/ambiguous upstream output aborts rather than assigning a possibly wrong note.
+Must explicitly set `rights_confirmed: true` in JSON and pass `--execute`, and a local CUDA device must be available. This code calls **official upstream model**; it does not reimplement neural synthesis. It produces SFZ + Decent presets for each target.
 
-**Known limitation:** Selected 4-second window must contain a sufficiently identifiable target instrument. Same-category overlap may make cloning unreliable. Model quality is unmeasured; do not call samples source-exact. Only use audio with rights. Test on legally cleared stems as *ground truth for comparison*, not as a processing dependency.
+## MCP tools (read-only by design)
 
-## Validation and CI
+```bash
+python -m pip install -e '.[mcp]'
+export MIX2VST_WORKSPACE=/private/approved-workspace
+mix2vst-mcp
+```
 
-`pytest` tests pure orchestration and a mocked upstream CLI, not neural model sound fidelity. GitHub Actions `ci.yml` deliberately avoids installing model weights or consuming GPU. Full independent VST3 and audio render validation are future stages and must not be reported as passed.
+The local stdio MCP exposes only plan and integrity audit tools with filesystem boundaries. It is **not** an installed permanent public ChatGPT plugin. Public server deployment needs separate OAuth security and approval.
 
-No paid services, CI dispatch, workflow deployment or production publishing is triggered by this source archive.
+## Already compiled VST3 validation
 
-## Remaining roadmap
+After HISE or another project compiles an actual `MyInstrument.vst3` and you separately install pluginval:
 
-- [x] Real upstream CLI adapter + fail-closed, per-velocity batch contract tests
-- [x] Simple WAV note → `.sfz` sample-map exporter with SHA-256 and tests
-- [ ] Evaluate multiple cue windows and compare timbre consistency / same-category confusion
-- [ ] Record and verify licensed checkpoint hashes, pinned upstream commit, source provenance
-- [ ] **Run CUDA inference** for a permitted, real mixed song
-- [ ] Compare audio against legally cleared multitrack ground truth (evaluation only)
-- [ ] Use upstream converter / HISE to compile an actual `.vst3`
-- [ ] pluginval and DawDreamer full end-to-end render/compatibility check
-- [ ] MCP FastMCP endpoint with approved storage and explicit execution policy
+```bash
+mix2vst validate-vst3 --plugin /path/to/MyInstrument.vst3
+```
+
+Compilation of a separate plugin **cannot** be claimed from only an SFZ preset. Requires HISE project, compiler, samples, license review and host OS. Project metadata and tests: [UPSTREAMS.md](UPSTREAMS.md), [Validation gates](docs/VALIDATION.md).
+
+**Policy:** free CPU GitHub Actions only; no deployment, charge, source recordings, pretrained weights or automatic main merge.

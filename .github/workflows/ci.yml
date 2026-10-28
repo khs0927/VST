@@ -1,19 +1,26 @@
-name: Python core CI
+name: CPU OSS integration tests
 on:
   push:
   pull_request:
   workflow_dispatch:
 jobs:
-  core:
+  offline:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install
+      - name: Install pure-Python glue tests
         run: python -m pip install -e '.[test]'
-      - name: Test offline CPU core
+      - name: Verify tests (no GPU, source music or pretrained weights)
         run: python -m pytest -q
+      - name: Probe optional integrations (read-only)
+        run: mix2vst preflight
+      - name: Check MIDI CLI
+        run: |
+          mix2vst make-midi --out /tmp/vst-probe.mid --pitch 60
+          test -s /tmp/vst-probe.mid

@@ -1,2 +1,2 @@
-"""Stemless, cue-conditioned instrument factory."""
-__version__ = "0.1.0"
+"""Stemless cued instrument factory. No model weights are bundled."""
+__version__ = "0.2.0"
