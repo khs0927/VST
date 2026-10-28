@@ -17,10 +17,13 @@ def _approved_path(value: str) -> Path:
     if not root:
         raise PermissionError("MIX2VST_WORKSPACE must be set")
     base = Path(root).expanduser().resolve(strict=True)
-    candidate = (base / value).resolve(strict=True)
+    # Resolve and check containment BEFORE insisting the target exists.
+    # This ensures outside-workspace requests consistently fail closed,
+    # even if their destination filename has not been created yet.
+    candidate = (base / value).resolve(strict=False)
     if not candidate.is_relative_to(base):
         raise PermissionError("path is outside approved workspace")
-    return candidate
+    return candidate.resolve(strict=True)
 
 
 def plan_batch_tool(spec_path: str) -> dict:
